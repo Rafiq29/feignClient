@@ -1,0 +1,66 @@
+@ErrorHandling(defaultException = CashbackException.class)
+    @PostMapping("/search")
+
+class FeignConfiguration {
+
+        @Bean
+        Logger.Level feignLoggerLevel() {
+            return Logger.Level.FULL;
+        }
+
+        @Bean
+        public ErrorDecoder cashbackFeignErrorDecoder() {
+            return new CashbackErrorDecoder();
+        }
+}
+
+public class CashbackErrorDecoder implements ErrorDecoder {
+
+    @Override
+    public Exception decode(String s, Response response) {
+        CashbackException cashbackException;
+        try {
+            cashbackException = new CashbackException(s, response);
+        } catch (IOException ex) {
+            throw new CommonException(ex.getMessage());
+        }
+        return cashbackException;
+    }
+}
+
+@Data
+@EqualsAndHashCode(callSuper = true)
+public class CashbackException extends CommonException {
+
+    private String errorReference;
+    private String errorCode;
+    private String errorMessage;
+    private Integer status;
+
+    @FeignExceptionConstructor
+    public CashbackException(String body, Response response) throws IOException {
+        super(String.valueOf(response.status()), body);
+        CashbackErrorResponse errorResponse = CashbackErrorResponse.of(response);
+        this.errorCode = ErrorCodesReplacement.of(errorResponse.getCode());
+        this.errorMessage = errorResponse.getMessage();
+        this.errorReference = errorResponse.getReference();
+        this.status = response.status();
+    }
+}
+
+@Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
+public class CashbackErrorResponse {
+
+    private String reference;
+    private String code;
+    private String message;
+
+    public static CashbackErrorResponse of(Response response) throws IOException {
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        return mapper.readValue(response.body().asInputStream(), CashbackErrorResponse.class);
+    }
+}
